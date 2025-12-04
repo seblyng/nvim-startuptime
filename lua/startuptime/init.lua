@@ -70,6 +70,7 @@ local function parse(file)
 			else
 				item.tries = 1
 				table.insert(items, item)
+				item.idx = #items
 				key_to_item[key] = item
 			end
 		end
@@ -163,7 +164,28 @@ local function create_output(items, startup_time)
 	return lines
 end
 
-local function setup_keymaps(bufnr, items)
+-- Column layout: event (50) + "  " (2) + time (7) + "  " (2) + percent (7) + "  " (2) + plot
+local function highlight(bufnr, items, lines)
+	-- Highlight startup line (centered in event column)
+	local colon = lines[1]:find(":")
+	vim.api.nvim_buf_set_extmark(bufnr, ns_id, 0, colon - 8, { end_col = colon, hl_group = "Title" })
+	vim.api.nvim_buf_set_extmark(bufnr, ns_id, 0, colon + 1, { end_col = #lines[1], hl_group = "Number" })
+
+	-- Highlight header
+	vim.api.nvim_buf_set_extmark(bufnr, ns_id, 1, 0, { end_line = 2, hl_group = "Type" })
+
+	-- Highlight data rows
+	for i, item in ipairs(items) do
+		local row = i + 1 -- +1 for header
+		local hl = item.type == EVENT_TYPES.sourcing and "String" or "Identifier"
+		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 0, { end_col = 50, hl_group = hl })
+		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 52, { end_col = 59, hl_group = "Number" })
+		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 61, { end_col = 68, hl_group = "Special" })
+		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 70, { end_col = #lines[row + 1], hl_group = "Normal" })
+	end
+end
+
+local function setup_keymaps(bufnr, items, startup_time)
 	-- Setup keymaps
 	-- TODO(seb): Do not hardcode to gh...
 	-- I want to use the same keymap as configured for vim.lsp.hover
@@ -226,6 +248,26 @@ local function setup_keymaps(bufnr, items)
 			vim.cmd("edit " .. vim.fn.fnameescape(file))
 		end
 	end, { buffer = bufnr, silent = true, nowait = true })
+
+	local sort_key = "time"
+	vim.keymap.set("n", "<C-s>", function()
+		sort_key = sort_key == "time" and "idx" or "time"
+		table.sort(items, function(a, b)
+			if sort_key == "idx" then
+				return a.idx < b.idx
+			else
+				return a.time > b.time
+			end
+		end)
+
+		local lines = create_output(items, startup_time)
+
+		vim.bo[bufnr].modifiable = true
+		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+		vim.bo[bufnr].modifiable = false
+
+		highlight(bufnr, items, lines)
+	end, { buffer = bufnr, silent = true, nowait = true })
 end
 
 -- Create and display the startuptime buffer
@@ -247,28 +289,9 @@ local function display(items, startup_time)
 	vim.bo[bufnr].swapfile = false
 	vim.bo[bufnr].filetype = "startuptime"
 
-	-- Column layout: event (50) + "  " (2) + time (7) + "  " (2) + percent (7) + "  " (2) + plot
-	vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1)
+	highlight(bufnr, items, lines)
 
-	-- Highlight startup line (centered in event column)
-	local colon = lines[1]:find(":")
-	vim.api.nvim_buf_set_extmark(bufnr, ns_id, 0, colon - 8, { end_col = colon, hl_group = "Title" })
-	vim.api.nvim_buf_set_extmark(bufnr, ns_id, 0, colon + 1, { end_col = #lines[1], hl_group = "Number" })
-
-	-- Highlight header
-	vim.api.nvim_buf_set_extmark(bufnr, ns_id, 1, 0, { end_line = 2, hl_group = "Type" })
-
-	-- Highlight data rows
-	for i, item in ipairs(items) do
-		local row = i + 1 -- +1 for header
-		local hl = item.type == EVENT_TYPES.sourcing and "String" or "Identifier"
-		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 0, { end_col = 50, hl_group = hl })
-		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 52, { end_col = 59, hl_group = "Number" })
-		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 61, { end_col = 68, hl_group = "Special" })
-		vim.api.nvim_buf_set_extmark(bufnr, ns_id, row, 70, { end_col = #lines[row + 1], hl_group = "Normal" })
-	end
-
-	setup_keymaps(bufnr, items)
+	setup_keymaps(bufnr, items, startup_time)
 
 	vim.cmd("sbuffer " .. bufnr)
 end
