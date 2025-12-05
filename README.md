@@ -14,9 +14,14 @@ vim.pack.add({ "https://github.com/seblyng/nvim-startuptime" })
 ## Usage
 
 - Launch `nvim-startuptime` with `:StartupTime`.
-- Press `gh` on events to get additional information.
-- Press `gf` on sourcing events to load the corresponding file.
+- Press `<C-s>` to toggle sort between descending time and original order.
 - Times are in milliseconds.
+
+## Features
+
+- In process language server is attached with hover and definition support.
+  - Use `vim.lsp.buf.hover()` to view more information about a startup event.
+  - Use `vim.lsp.buf.definition()` to jump to the source of a startup event.
 
 ## License
 

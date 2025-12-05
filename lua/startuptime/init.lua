@@ -7,6 +7,8 @@ local EVENT_TYPES = {
 	other = 1,
 }
 
+M.EVENT_TYPES = EVENT_TYPES
+
 ---@param numbers number[]
 ---@return { mean: number, std: number }
 local function stats(numbers)
@@ -186,69 +188,6 @@ local function highlight(bufnr, items, lines)
 end
 
 local function setup_keymaps(bufnr, items, startup_time)
-	-- Setup keymaps
-	-- TODO(seb): Do not hardcode to gh...
-	-- I want to use the same keymap as configured for vim.lsp.hover
-	-- Do I need to create an in process language server for that?
-	vim.keymap.set("n", "gh", function()
-		local item = items[vim.api.nvim_win_get_cursor(0)[1] - 2]
-		if not item then
-			return vim.api.nvim_echo({ { "No details found", "WarningMsg" } }, false, {})
-		end
-
-		-- stylua: ignore start
-		local fmt = function(t)
-			return t.std ~= t.std and string.format("%.3f ms", t.mean) or string.format("%.3f ± %.3f ms", t.mean, t.std)
-		end
-		local parts = {
-			{ "Event: ", "Title" }, { item.event .. "\n" },
-			{ "Start: ", "Title" }, { fmt(item.start) .. "\n", "Number" },
-			{ "Finish: ", "Title" }, { fmt(item.finish) .. "\n", "Number" },
-		}
-
-		if item.type == EVENT_TYPES.sourcing then
-			vim.list_extend(parts, {
-				{ "Self: ", "Title" }, { fmt(item.self) .. "\n", "Number" },
-				{ "Self+sourced: ", "Title" }, { fmt(item["self+sourced"]) .. "\n", "Number" },
-			})
-		else
-			vim.list_extend(parts, { { "Elapsed: ", "Title" }, { fmt(item.elapsed) .. "\n", "Number" } })
-		end
-
-		vim.list_extend(parts, {
-			{ "Occurrence: ", "Title" }, { item.occurrence .. "\n", "Number" },
-			{ "Tries: ", "Title" }, { tostring(item.tries), "Number" },
-		})
-
-		vim.api.nvim_echo(parts, false, {})
-		-- stylua: ignore end
-	end, { buffer = bufnr, silent = true, nowait = true })
-
-	vim.keymap.set("n", "gf", function()
-		local item = items[vim.api.nvim_win_get_cursor(0)[1] - 2]
-		if not item or item.type ~= EVENT_TYPES.sourcing then
-			return vim.api.nvim_echo({ { "Not a sourcing event", "WarningMsg" } }, false, {})
-		end
-
-		local module = item.event:match("^require%('([^']+)'%)")
-		if module then
-			local module_path = module:gsub("%.", "/")
-			local file = vim.api.nvim_get_runtime_file(string.format("lua/%s.lua", module_path), false)[1]
-				or vim.api.nvim_get_runtime_file(string.format("lua/%s/init.lua", module_path), false)[1]
-
-			if not file then
-				return vim.notify("Could not find file for module: " .. module, vim.log.levels.WARN)
-			end
-
-			vim.cmd("edit " .. vim.fn.fnameescape(file))
-		else
-			local sourcing = item.event:match("^sourcing (.+)$")
-			local file = sourcing and sourcing or item.event
-
-			vim.cmd("edit " .. vim.fn.fnameescape(file))
-		end
-	end, { buffer = bufnr, silent = true, nowait = true })
-
 	local sort_key = "time"
 	vim.keymap.set("n", "<C-s>", function()
 		sort_key = sort_key == "time" and "idx" or "time"
@@ -294,7 +233,13 @@ local function display(items, startup_time)
 	setup_keymaps(bufnr, items, startup_time)
 
 	vim.cmd("sbuffer " .. bufnr)
+
+	-- Store items to use in hover and definition handlers
+	M.items = items
+	vim.lsp.buf_attach_client(bufnr, require("startuptime.lsp").client_id)
 end
+
+M.items = nil
 
 ---@param tries number
 function M.profile(tries)
