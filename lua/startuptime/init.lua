@@ -286,8 +286,23 @@ function M.profile(tries)
 		}
 
 		-- Start the job with a PTY so UIEnter events are captured
-		vim.fn.jobstart(cmd, {
+		local dsr_responded = false
+		local job_id
+		job_id = vim.fn.jobstart(cmd, {
 			pty = true,
+			on_stdout = function(_, data)
+				-- Respond to DSR query from vim._core.defaults to avoid 100ms
+				-- timeout in background color detection (vim.wait in defaults.lua)
+				if not dsr_responded then
+					for _, chunk in ipairs(data) do
+						if chunk:find("\027%[5n") then
+							dsr_responded = true
+							vim.fn.chansend(job_id, "\027[0n")
+							return
+						end
+					end
+				end
+			end,
 			on_exit = function(_, exit_code, _)
 				if exit_code ~= 0 then
 					vim.fn.delete(temp_file)
