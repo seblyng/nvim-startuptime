@@ -243,7 +243,7 @@ M.items = nil
 
 ---@param tries number
 function M.profile(tries)
-	local progress = { kind = "progress", title = "nvim-startuptime" }
+	local progress = { kind = "progress", title = "nvim-startuptime", source = "nvim-startuptime" }
 
 	--- @type fun(kind: 'begin'|'report'|'end', _completed: number, total: number): nil
 	local report_progress = vim.schedule_wrap(function(kind, completed, total)
